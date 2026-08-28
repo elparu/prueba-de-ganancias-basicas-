@@ -1,3 +1,10 @@
+// ==========================================
+// CONFIGURACIÓN DE CONEXIÓN CON SUPABASE
+// ==========================================
+const SUPABASE_URL = 'https://hkqhswejzxnzqmuedctq.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhrcWhzd2VqenhuenFtdWVkY3RxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc5MjY1NTEsImV4cCI6MjEwMzUwMjU1MX0.nlxjIKo4eIAWIoMpys93Yvh8tF5nFh8rd_V7XB2SmzM';
+const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
 // ESTADO GLOBAL DE LA APLICACIÓN
 let estado = {
   rolActual: 'operador',
@@ -5,30 +12,102 @@ let estado = {
   saldoCaja: 0.00,
   totalGastosExtrasUSD: 0.00,
   tipoCambioUSD: 36.5,
-  juegos: [
-    { id: 1, nombre: 'Genshin Impact - 60 Cristales', costo: 0.80, precio: 1.00 },
-    { id: 2, nombre: 'Genshin Impact - Bendición Lunar', costo: 4.00, precio: 5.00 }
-  ],
+  juegos: [],
   ventas: [],
   enlaces: [],
-  depositos: [] // Almacena el historial de depósitos manuales
+  depositos: []
 };
 
-// REGISTRO PERMANENTE DE CLIENTES (Persistencia en LocalStorage aislada de finanzas)
-let historialPermanenteClientes = JSON.parse(localStorage.getItem('historialPermanenteClientes')) || [];
-
+let historialPermanenteClientes = [];
 const DEV_PASSWORD = "123";
 
-document.addEventListener('DOMContentLoaded', () => {
-  renderizarJuegosEnSelect();
-  renderizarTablaJuegosDev();
-  renderizarEnlaces();
-  renderizarTablaDepositosDev();
-  renderizarHistorialPermanente();
-  actualizarUI();
-});
+// ==========================================
+// CARGA Y SINCRONIZACIÓN EN TIEMPO REAL
+// ==========================================
+async function cargarDatosDesdeSupabase() {
+  // 1. Configuración y Fondos
+  const { data: config } = await _supabase.from('configuracion_sistema').select('*').eq('id', 'config_principal').single();
+  if (config) {
+    estado.tipoCambioUSD = config.tipo_cambio || 36.5;
+    estado.saldoBanco = parseFloat(config.fondo_banco) || 0.00;
+    estado.saldoCaja = parseFloat(config.fondo_efectivo) || 0.00;
+    
+    if (document.getElementById('tipoCambio')) document.getElementById('tipoCambio').value = estado.tipoCambioUSD;
+  }
 
+  // 2. Juegos Registrados
+  const { data: juegos } = await _supabase.from('juegos_registrados').select('*').order('id', { ascending: true });
+  if (juegos) {
+    estado.juegos = juegos.map(j => ({ id: j.id, nombre: j.nombre, costo: parseFloat(j.costo || 0), precio: parseFloat(j.precio || 0) }));
+    renderizarJuegosEnSelect();
+    renderizarTablaJuegosDev();
+  }
+
+  // 3. Enlaces
+  const { data: enlaces } = await _supabase.from('enlaces_dev').select('*').order('id', { ascending: true });
+  if (enlaces) {
+    estado.enlaces = enlaces;
+    renderizarEnlaces();
+  }
+
+  // 4. Historial Permanente de Clientes
+  const { data: clientes } = await _supabase.from('historial_clientes').select('*').order('id', { ascending: false });
+  if (clientes) {
+    historialPermanenteClientes = clientes.map(c => ({
+      idDb: c.id,
+      fecha: c.fecha,
+      clienteNombre: c.cliente_nombre,
+      clienteId: c.cliente_id,
+      juegoNombre: c.juego_nombre,
+      precioVenta: parseFloat(c.precio_venta || 0),
+      metodo: c.metodo
+    }));
+    renderizarHistorialPermanente();
+  }
+
+  // 5. Transacciones Operativas
+  const { data: transacciones } = await _supabase.from('historial_transacciones').select('*').order('id', { ascending: false });
+  if (transacciones) {
+    estado.ventas = transacciones.map(t => ({
+      id: t.id,
+      clienteNombre: t.cliente_nombre,
+      clienteId: t.cliente_id,
+      juegoNombre: t.juego_nombre,
+      precioHistorico: parseFloat(t.precio_venta || 0),
+      costoHistorico: parseFloat(t.costo || 0),
+      ganancia: parseFloat(t.ganancia || 0),
+      cuentaAfectada: t.metodo,
+      fecha: t.fecha
+    }));
+  }
+
+  // 6. Depósitos / Auditoría
+  const { data: depositos } = await _supabase.from('auditoria_fondos').select('*').order('id', { ascending: false });
+  if (depositos) {
+    estado.depositos = depositos.map(d => ({
+      id: d.id,
+      concepto: d.concepto,
+      monto: parseFloat(d.monto || 0),
+      cuenta: d.cuenta_destino
+    }));
+    renderizarTablaDepositosDev();
+  }
+
+  actualizarUI();
+}
+
+// Escuchar cambios multidispositivo en tiempo real
+_supabase.channel('cambios-sistema')
+  .on('postgres_changes', { event: '*', schema: 'public' }, () => {
+    cargarDatosDesdeSupabase();
+  })
+  .subscribe();
+
+document.addEventListener('DOMContentLoaded', cargarDatosDesdeSupabase);
+
+// ==========================================
 // GESTIÓN DE ROLES
+// ==========================================
 function cambiarRol() {
   const select = document.getElementById('roleSelect');
   const panelDev = document.getElementById('panelDev');
@@ -41,7 +120,7 @@ function cambiarRol() {
       renderizarTablaJuegosDev();
       renderizarEnlaces();
       renderizarTablaDepositosDev();
-      renderizarHistorialPermanente(); // Refresca para mostrar botones de borrado
+      renderizarHistorialPermanente();
     } else {
       alert('Contraseña incorrecta');
       select.value = 'operador';
@@ -53,12 +132,15 @@ function cambiarRol() {
     estado.rolActual = 'operador';
     if (panelDev) panelDev.classList.add('hidden');
     renderizarEnlaces();
-    renderizarHistorialPermanente(); // Refresca para ocultar botones de borrado
+    renderizarHistorialPermanente();
   }
 }
-// CREAR O EDITAR JUEGO (DESARROLLADOR)
-function guardarJuego() {
-  const nombre = document.getElementById('devNombreJuego').value;
+
+// ==========================================
+// GESTIÓN DE JUEGOS
+// ==========================================
+async function guardarJuego() {
+  const nombre = document.getElementById('devNombreJuego').value.trim();
   const costo = parseFloat(document.getElementById('devCosto').value);
   const precio = parseFloat(document.getElementById('devPrecio').value);
 
@@ -68,27 +150,25 @@ function guardarJuego() {
   }
 
   const juegoExistente = estado.juegos.find(j => j.nombre.toLowerCase() === nombre.toLowerCase());
+  
   if (juegoExistente) {
-    juegoExistente.costo = costo;
-    juegoExistente.precio = precio;
+    await _supabase.from('juegos_registrados').update({ costo, precio }).eq('id', juegoExistente.id);
     alert(`Juego "${nombre}" actualizado.`);
   } else {
-    estado.juegos.push({ id: Date.now(), nombre, costo, precio });
+    await _supabase.from('juegos_registrados').insert([{ nombre, costo, precio }]);
     alert(`Juego "${nombre}" creado.`);
   }
 
   document.getElementById('devNombreJuego').value = '';
   document.getElementById('devCosto').value = '';
   document.getElementById('devPrecio').value = '';
-  renderizarJuegosEnSelect();
-  renderizarTablaJuegosDev();
+  cargarDatosDesdeSupabase();
 }
 
-function eliminarJuego(idJuego) {
+async function eliminarJuego(idJuego) {
   if (confirm("¿Estás seguro de eliminar este apartado?")) {
-    estado.juegos = estado.juegos.filter(j => j.id !== idJuego);
-    renderizarJuegosEnSelect();
-    renderizarTablaJuegosDev();
+    await _supabase.from('juegos_registrados').delete().eq('id', idJuego);
+    cargarDatosDesdeSupabase();
   }
 }
 
@@ -113,11 +193,31 @@ function renderizarJuegosEnSelect() {
   });
 }
 
-// GESTIÓN DE ENLACES DE COMPRA
-function agregarEnlaceCompra() {
+function renderizarTablaJuegosDev() {
+  const tbody = document.getElementById('tbodyJuegosDev');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+  estado.juegos.forEach(juego => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><b>${juego.nombre}</b></td>
+      <td>$${juego.costo.toFixed(2)}</td>
+      <td>$${juego.precio.toFixed(2)}</td>
+      <td>
+        <button class="btn btn-warning" style="padding:2px 6px; font-size:0.8rem;" onclick="cargarJuegoEnFormulario(${juego.id})">Editar</button>
+        <button class="btn btn-danger" style="padding:2px 6px; font-size:0.8rem;" onclick="eliminarJuego(${juego.id})">Borrar</button>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+// ==========================================
+// GESTIÓN DE ENLACES
+// ==========================================
+async function agregarEnlaceCompra() {
   const nombreInput = document.getElementById('linkNombreInput');
   const urlInput = document.getElementById('linkUrlInput');
-
   if (!nombreInput || !urlInput) return;
 
   const nombre = nombreInput.value.trim();
@@ -132,17 +232,16 @@ function agregarEnlaceCompra() {
     url = 'https://' + url;
   }
 
-  estado.enlaces.push({ id: Date.now(), nombre, url });
+  await _supabase.from('enlaces_dev').insert([{ nombre, url }]);
 
   nombreInput.value = '';
   urlInput.value = '';
-
-  renderizarEnlaces();
+  cargarDatosDesdeSupabase();
 }
 
-function eliminarEnlaceCompra(id) {
-  estado.enlaces = estado.enlaces.filter(item => item.id !== id);
-  renderizarEnlaces();
+async function eliminarEnlaceCompra(id) {
+  await _supabase.from('enlaces_dev').delete().eq('id', id);
+  cargarDatosDesdeSupabase();
 }
 
 function renderizarEnlaces() {
@@ -175,27 +274,10 @@ function renderizarEnlaces() {
   });
 }
 
-function renderizarTablaJuegosDev() {
-  const tbody = document.getElementById('tbodyJuegosDev');
-  if (!tbody) return;
-  tbody.innerHTML = '';
-  estado.juegos.forEach(juego => {
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td><b>${juego.nombre}</b></td>
-      <td>$${juego.costo.toFixed(2)}</td>
-      <td>$${juego.precio.toFixed(2)}</td>
-      <td>
-        <button class="btn btn-warning" style="padding:2px 6px; font-size:0.8rem;" onclick="cargarJuegoEnFormulario(${juego.id})">Editar</button>
-        <button class="btn btn-danger" style="padding:2px 6px; font-size:0.8rem;" onclick="eliminarJuego(${juego.id})">Borrar</button>
-      </td>
-    `;
-    tbody.appendChild(tr);
-  });
-}
-
-// REGISTRAR VENTA
-function registrarVenta() {
+// ==========================================
+// REGISTRO DE VENTAS Y FONDOS
+// ==========================================
+async function registrarVenta() {
   const juegoId = parseInt(document.getElementById('selectJuego').value);
   const clienteNombre = document.getElementById('clienteNombre').value.trim() || 'Cliente General';
   const clienteId = document.getElementById('clienteId').value.trim() || 'N/A';
@@ -210,143 +292,74 @@ function registrarVenta() {
   const gananciaNeta = juego.precio - juego.costo;
   const fechaActual = new Date().toLocaleString();
 
-  const venta = {
-    id: Date.now(),
-    clienteNombre,
-    clienteId,
-    juegoNombre: juego.nombre,
-    precioHistorico: juego.precio,
-    costoHistorico: juego.costo,
+  // 1. Guardar en Historial Transacciones
+  await _supabase.from('historial_transacciones').insert([{
+    cliente_nombre: clienteNombre,
+    cliente_id: clienteId,
+    juego_nombre: juego.nombre,
+    precio_venta: juego.precio,
+    costo: juego.costo,
     ganancia: gananciaNeta,
-    cuentaAfectada: cuentaIngreso,
+    metodo: cuentaIngreso,
     fecha: fechaActual
-  };
+  }]);
 
-  // 1. Registro Operativo
-  estado.ventas.push(venta);
+  // 2. Guardar en Historial Cliente Permanente
+  await _supabase.from('historial_clientes').insert([{
+    fecha: fechaActual,
+    cliente_nombre: clienteNombre,
+    cliente_id: clienteId,
+    juego_nombre: juego.nombre,
+    precio_venta: juego.precio,
+    metodo: cuentaIngreso
+  }]);
 
-  // 2. Transacción de Saldos
-  estado.saldoBanco -= venta.costoHistorico;
+  // 3. Actualizar Fondos en Base de Datos
+  let nuevoBanco = estado.saldoBanco - juego.costo;
+  let nuevaCaja = estado.saldoCaja;
+
   if (cuentaIngreso === 'banco') {
-    estado.saldoBanco += venta.precioHistorico;
+    nuevoBanco += juego.precio;
   } else {
-    estado.saldoCaja += venta.precioHistorico;
+    nuevaCaja += juego.precio;
   }
 
-  // 3. Registro Permanente Aislado
-  historialPermanenteClientes.push({
-    fecha: fechaActual,
-    clienteNombre,
-    clienteId,
-    juegoNombre: juego.nombre,
-    precioVenta: juego.precio,
-    metodo: cuentaIngreso
-  });
-  localStorage.setItem('historialPermanenteClientes', JSON.stringify(historialPermanenteClientes));
-
-  actualizarUI();
-  renderizarHistorialPermanente();
+  await _supabase.from('configuracion_sistema').update({
+    fondo_banco: nuevoBanco,
+    fondo_efectivo: nuevaCaja
+  }).eq('id', 'config_principal');
 
   document.getElementById('clienteNombre').value = '';
   document.getElementById('clienteId').value = '';
   document.getElementById('juegoSearchInput').value = '';
   document.getElementById('selectJuego').value = '';
+  
+  cargarDatosDesdeSupabase();
 }
 
-// FUNCIÓN PARA COPIAR ID
-function copiarTexto(texto, btnElement) {
-  if (texto === 'N/A' || !texto) return;
+async function eliminarVenta(idVenta) {
+  const venta = estado.ventas.find(v => v.id === idVenta);
+  if (!venta) return;
 
-  navigator.clipboard.writeText(texto).then(() => {
-    const textoOriginal = btnElement.innerText;
-    btnElement.innerText = "¡Copiado!";
-    btnElement.style.backgroundColor = "#16a34a";
-    btnElement.style.color = "#ffffff";
+  let nuevoBanco = estado.saldoBanco + venta.costoHistorico;
+  let nuevaCaja = estado.saldoCaja;
 
-    setTimeout(() => {
-      btnElement.innerText = textoOriginal;
-      btnElement.style.backgroundColor = "";
-      btnElement.style.color = "";
-    }, 1200);
-  }).catch(err => {
-    console.error('Error al copiar: ', err);
-  });
-}
-
-// RENDERIZAR Y FILTRAR HISTORIAL PERMANENTE
-function renderizarHistorialPermanente(filtro = '') {
-  const tbody = document.getElementById('tbodyHistorialPermanente');
-  if (!tbody) return;
-
-  tbody.innerHTML = '';
-
-  if (historialPermanenteClientes.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#94a3b8;">No hay registros históricos almacenados</td></tr>';
-    return;
+  if (venta.cuentaAfectada === 'banco') {
+    nuevoBanco -= venta.precioHistorico;
+  } else {
+    nuevaCaja -= venta.precioHistorico;
   }
 
-  const filtrados = historialPermanenteClientes.filter(v =>
-    v.clienteNombre.toLowerCase().includes(filtro.toLowerCase()) ||
-    v.clienteId.toLowerCase().includes(filtro.toLowerCase()) ||
-    v.juegoNombre.toLowerCase().includes(filtro.toLowerCase())
-  );
+  await _supabase.from('historial_transacciones').delete().eq('id', idVenta);
+  await _supabase.from('configuracion_sistema').update({
+    fondo_banco: nuevoBanco,
+    fondo_efectivo: nuevaCaja
+  }).eq('id', 'config_principal');
 
-  if (filtrados.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#94a3b8;">No se encontraron coincidencias</td></tr>';
-    return;
-  }
-
-  filtrados.forEach(v => {
-    const tr = document.createElement('tr');
-    
-    // Botón de copiado si existe un ID válido
-    const idHtml = (v.clienteId && v.clienteId !== 'N/A') 
-      ? `<div style="display: flex; align-items: center; gap: 0.5rem;">
-           <code style="background: #f1f5f9; padding: 2px 6px; border-radius: 4px; font-weight: bold;">${v.clienteId}</code>
-           <button type="button" class="btn btn-primary" style="padding: 2px 6px; font-size: 0.75rem;" onclick="copiarTexto('${v.clienteId}', this)">📋 Copiar</button>
-         </div>`
-      : `<span style="color: #94a3b8;">N/A</span>`;
-
-    tr.innerHTML = `
-      <td>${v.fecha}</td>
-      <td><b>${v.clienteNombre}</b></td>
-      <td>${idHtml}</td>
-      <td>${v.juegoNombre}</td>
-      <td>$${v.precioVenta.toFixed(2)}</td>
-      <td><span class="badge">${v.metodo.toUpperCase()}</span></td>
-    `;
-    tbody.appendChild(tr);
-  });
+  cargarDatosDesdeSupabase();
 }
 
-function filtrarHistorialPermanente() {
-  const input = document.getElementById('buscarClienteHistorial');
-  if (input) {
-    renderizarHistorialPermanente(input.value.trim());
-  }
-}
-
-// ELIMINAR / ANULAR VENTA OPERATIVA
-function eliminarVenta(idVenta) {
-  const index = estado.ventas.findIndex(v => v.id === idVenta);
-  if (index !== -1) {
-    const venta = estado.ventas[index];
-
-    estado.saldoBanco += venta.costoHistorico;
-
-    if (venta.cuentaAfectada === 'banco') {
-      estado.saldoBanco -= venta.precioHistorico;
-    } else {
-      estado.saldoCaja -= venta.precioHistorico;
-    }
-
-    estado.ventas.splice(index, 1);
-    actualizarUI();
-  }
-}
-
-// REGISTRAR DEPÓSITO EXTERNO Y AUDITORÍA
-function registrarDeposito() {
+async function registrarDeposito() {
   const conceptoInput = document.getElementById('depositoConcepto');
   const montoInput = document.getElementById('depositoMonto');
   const cuentaSelect = document.getElementById('depositoCuenta');
@@ -360,49 +373,49 @@ function registrarDeposito() {
     return;
   }
 
-  const deposito = {
-    id: Date.now(),
+  await _supabase.from('auditoria_fondos').insert([{
     concepto,
     monto,
-    cuenta
-  };
+    cuenta_destino: cuenta
+  }]);
 
-  estado.depositos.push(deposito);
+  let nuevoBanco = estado.saldoBanco;
+  let nuevaCaja = estado.saldoCaja;
 
-  if (cuenta === 'banco') {
-    estado.saldoBanco += monto;
-  } else {
-    estado.saldoCaja += monto;
-  }
+  if (cuenta === 'banco') nuevoBanco += monto;
+  else nuevaCaja += monto;
+
+  await _supabase.from('configuracion_sistema').update({
+    fondo_banco: nuevoBanco,
+    fondo_efectivo: nuevaCaja
+  }).eq('id', 'config_principal');
 
   conceptoInput.value = '';
   montoInput.value = '';
-
-  actualizarUI();
-  renderizarTablaDepositosDev();
+  cargarDatosDesdeSupabase();
 }
 
-// ANULAR DEPÓSITO REALIZADO POR ERROR
-function eliminarDeposito(idDeposito) {
-  const index = estado.depositos.findIndex(d => d.id === idDeposito);
-  if (index !== -1) {
-    const dep = estado.depositos[index];
+async function eliminarDeposito(idDeposito) {
+  const dep = estado.depositos.find(d => d.id === idDeposito);
+  if (!dep) return;
 
-    if (confirm(`¿Deseas anular el depósito "${dep.concepto}" por $${dep.monto.toFixed(2)} USD?`)) {
-      if (dep.cuenta === 'banco') {
-        estado.saldoBanco -= dep.monto;
-      } else {
-        estado.saldoCaja -= dep.monto;
-      }
+  if (confirm(`¿Deseas anular el depósito "${dep.concepto}" por $${dep.monto.toFixed(2)} USD?`)) {
+    let nuevoBanco = estado.saldoBanco;
+    let nuevaCaja = estado.saldoCaja;
 
-      estado.depositos.splice(index, 1);
-      actualizarUI();
-      renderizarTablaDepositosDev();
-    }
+    if (dep.cuenta === 'banco') nuevoBanco -= dep.monto;
+    else nuevaCaja -= dep.monto;
+
+    await _supabase.from('auditoria_fondos').delete().eq('id', idDeposito);
+    await _supabase.from('configuracion_sistema').update({
+      fondo_banco: nuevoBanco,
+      fondo_efectivo: nuevaCaja
+    }).eq('id', 'config_principal');
+
+    cargarDatosDesdeSupabase();
   }
 }
 
-// DIBUJAR TABLA DE DEPÓSITOS EN EL PANEL DEV
 function renderizarTablaDepositosDev() {
   const tbody = document.getElementById('tbodyDepositosDev');
   if (!tbody) return;
@@ -427,18 +440,7 @@ function renderizarTablaDepositosDev() {
   });
 }
 
-// REINICIAR REGISTROS Y CONTADORES DE VENTAS
-function reiniciarContadorVentas() {
-  if (confirm("⚠️ ¿Estás seguro de reiniciar las ventas? Esto borrará el historial de transacciones y dejará la métrica en $0.00 USD. Los saldos de Banco, Caja Chica y el Historial Permanente de Clientes NO se perderán.")) {
-    estado.ventas = [];
-    estado.totalGastosExtrasUSD = 0;
-    actualizarUI();
-    alert("El historial operativo de ventas se ha reiniciado correctamente.");
-  }
-}
-
-// REGISTRAR GASTO EXTRA
-function registrarGasto() {
+async function registrarGasto() {
   const concepto = document.getElementById('gastoConcepto').value;
   const montoLocal = parseFloat(document.getElementById('gastoLocal').value);
   const origen = document.getElementById('gastoOrigen').value;
@@ -449,43 +451,129 @@ function registrarGasto() {
   }
 
   const montoUSD = montoLocal / estado.tipoCambioUSD;
+  let nuevoBanco = estado.saldoBanco;
+  let nuevaCaja = estado.saldoCaja;
 
-  if (origen === 'banco') {
-    estado.saldoBanco -= montoUSD;
-  } else {
-    estado.saldoCaja -= montoUSD;
-  }
+  if (origen === 'banco') nuevoBanco -= montoUSD;
+  else nuevaCaja -= montoUSD;
 
   estado.totalGastosExtrasUSD += montoUSD;
+
+  await _supabase.from('configuracion_sistema').update({
+    fondo_banco: nuevoBanco,
+    fondo_efectivo: nuevaCaja
+  }).eq('id', 'config_principal');
 
   alert(`Gasto de -$${montoUSD.toFixed(2)} USD descontado de ${origen.toUpperCase()} (${concepto || 'Sin concepto'})`);
   document.getElementById('gastoConcepto').value = '';
   document.getElementById('gastoLocal').value = '';
-  actualizarUI();
+  cargarDatosDesdeSupabase();
 }
 
-function actualizarTipoCambio() {
+async function actualizarTipoCambio() {
   const TC = parseFloat(document.getElementById('tipoCambio').value);
-  if (!isNaN(TC) && TC > 0) estado.tipoCambioUSD = TC;
+  if (!isNaN(TC) && TC > 0) {
+    estado.tipoCambioUSD = TC;
+    await _supabase.from('configuracion_sistema').update({ tipo_cambio: TC }).eq('id', 'config_principal');
+  }
 }
 
-// REFRESCAR UI Y CÁLCULOS GLOBALES
+async function reiniciarContadorVentas() {
+  if (confirm("⚠️ ¿Estás seguro de reiniciar las ventas? Esto borrará el historial de transacciones. Los saldos de Banco, Caja Chica y el Historial Permanente de Clientes NO se perderán.")) {
+    await _supabase.from('historial_transacciones').delete().neq('id', 0);
+    estado.totalGastosExtrasUSD = 0;
+    cargarDatosDesdeSupabase();
+    alert("El historial operativo de ventas se ha reiniciado correctamente.");
+  }
+}
+
+// ==========================================
+// HISTORIAL PERMANENTE
+// ==========================================
+async function eliminarRegistroPermanente(idDb) {
+  if (estado.rolActual !== 'desarrollador') {
+    alert("Acceso denegado. Solo el Desarrollador puede eliminar registros del historial.");
+    return;
+  }
+
+  if (confirm("¿Eliminar de forma permanente este registro?\n\nNota: Esto no afectará los saldos de Banco ni Caja.")) {
+    await _supabase.from('historial_clientes').delete().eq('id', idDb);
+    cargarDatosDesdeSupabase();
+  }
+}
+
+function renderizarHistorialPermanente(filtro = '') {
+  const tbody = document.getElementById('tbodyHistorialPermanente');
+  if (!tbody) return;
+
+  tbody.innerHTML = '';
+
+  if (historialPermanenteClientes.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:#94a3b8;">No hay registros históricos almacenados</td></tr>';
+    return;
+  }
+
+  const filtrados = historialPermanenteClientes.filter(v =>
+    v.clienteNombre.toLowerCase().includes(filtro.toLowerCase()) ||
+    v.clienteId.toLowerCase().includes(filtro.toLowerCase()) ||
+    v.juegoNombre.toLowerCase().includes(filtro.toLowerCase())
+  );
+
+  if (filtrados.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:#94a3b8;">No se encontraron coincidencias</td></tr>';
+    return;
+  }
+
+  filtrados.forEach(v => {
+    const tr = document.createElement('tr');
+
+    const idHtml = (v.clienteId && v.clienteId !== 'N/A') 
+      ? `<div style="display: flex; align-items: center; gap: 0.5rem;">
+           <code style="background: #f1f5f9; padding: 2px 6px; border-radius: 4px; font-weight: bold;">${v.clienteId}</code>
+           <button type="button" class="btn btn-primary" style="padding: 2px 6px; font-size: 0.75rem;" onclick="copiarTexto('${v.clienteId}', this)">📋 Copiar</button>
+         </div>`
+      : `<span style="color: #94a3b8;">N/A</span>`;
+
+    const colAccion = (estado.rolActual === 'desarrollador')
+      ? `<button class="btn btn-danger" style="padding: 2px 6px; font-size: 0.75rem;" onclick="eliminarRegistroPermanente(${v.idDb})">🗑️ Borrar</button>`
+      : `<span style="color: #cbd5e1; font-size: 0.75rem;">Protegido</span>`;
+
+    tr.innerHTML = `
+      <td>${v.fecha}</td>
+      <td><b>${v.clienteNombre}</b></td>
+      <td>${idHtml}</td>
+      <td>${v.juegoNombre}</td>
+      <td>$${v.precioVenta.toFixed(2)}</td>
+      <td><span class="badge">${v.metodo.toUpperCase()}</span></td>
+      <td>${colAccion}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+function filtrarHistorialPermanente() {
+  const input = document.getElementById('buscarClienteHistorial');
+  if (input) {
+    renderizarHistorialPermanente(input.value.trim());
+  }
+}
+
+// ==========================================
+// REFRESCAR INTERFAZ GLOBAL
+// ==========================================
 function actualizarUI() {
   const totalVentasUSD = estado.ventas.reduce((acc, v) => acc + v.precioHistorico, 0);
   const gananciaBrutaVentas = estado.ventas.reduce((acc, v) => acc + v.ganancia, 0);
   const gananciaNetaReal = gananciaBrutaVentas - estado.totalGastosExtrasUSD;
 
-  document.getElementById('saldoBanco').textContent = `$${estado.saldoBanco.toFixed(2)}`;
-  document.getElementById('saldoCaja').textContent = `$${estado.saldoCaja.toFixed(2)}`;
-  document.getElementById('totalVentas').textContent = `$${totalVentasUSD.toFixed(2)}`;
+  if (document.getElementById('saldoBanco')) document.getElementById('saldoBanco').textContent = `$${estado.saldoBanco.toFixed(2)}`;
+  if (document.getElementById('saldoCaja')) document.getElementById('saldoCaja').textContent = `$${estado.saldoCaja.toFixed(2)}`;
+  if (document.getElementById('totalVentas')) document.getElementById('totalVentas').textContent = `$${totalVentasUSD.toFixed(2)}`;
 
   const elGanancia = document.getElementById('totalGanancia');
-  elGanancia.textContent = `$${gananciaNetaReal.toFixed(2)}`;
-
-  if (gananciaNetaReal < 0) {
-    elGanancia.style.color = '#dc2626';
-  } else {
-    elGanancia.style.color = '#16a34a';
+  if (elGanancia) {
+    elGanancia.textContent = `$${gananciaNetaReal.toFixed(2)}`;
+    elGanancia.style.color = gananciaNetaReal < 0 ? '#dc2626' : '#16a34a';
   }
 
   const tbody = document.getElementById('tbodyVentas');
@@ -511,7 +599,26 @@ function actualizarUI() {
   });
 }
 
-// DROPDOWN Y BÚSQUEDA DE JUEGOS
+// ==========================================
+// BUSCADOR Y AUXILIARES
+// ==========================================
+function copiarTexto(texto, btnElement) {
+  if (texto === 'N/A' || !texto) return;
+
+  navigator.clipboard.writeText(texto).then(() => {
+    const textoOriginal = btnElement.innerText;
+    btnElement.innerText = "¡Copiado!";
+    btnElement.style.backgroundColor = "#16a34a";
+    btnElement.style.color = "#ffffff";
+
+    setTimeout(() => {
+      btnElement.innerText = textoOriginal;
+      btnElement.style.backgroundColor = "";
+      btnElement.style.color = "";
+    }, 1200);
+  });
+}
+
 document.addEventListener('click', (e) => {
   const container = document.querySelector('.search-selector-container');
   if (container && !container.contains(e.target)) {
@@ -565,78 +672,7 @@ function seleccionarJuegoDesdeBuscador(juego) {
   const dropdown = document.getElementById('searchResultsDropdown');
   if (dropdown) dropdown.classList.remove('active');
 }
-// ELIMINAR REGISTRO PERMANENTE (EXCLUSIVO MODO DESARROLLADOR)
-function eliminarRegistroPermanente(indexReal) {
-  if (estado.rolActual !== 'desarrollador') {
-    alert("Acceso denegado. Solo el Desarrollador puede eliminar registros del historial.");
-    return;
-  }
 
-  const reg = historialPermanenteClientes[indexReal];
-  if (confirm(`¿Eliminar de forma permanente el registro de "${reg.clienteNombre}" (${reg.juegoNombre})?\n\nNota: Esto no afectará los saldos de Banco ni Caja.`)) {
-    historialPermanenteClientes.splice(indexReal, 1);
-    localStorage.setItem('historialPermanenteClientes', JSON.stringify(historialPermanenteClientes));
-    
-    // Re-renderizar aplicando el filtro actual si lo hay
-    const inputFiltro = document.getElementById('buscarClienteHistorial');
-    renderizarHistorialPermanente(inputFiltro ? inputFiltro.value.trim() : '');
-  }
-}
-
-// RENDERIZAR Y FILTRAR HISTORIAL PERMANENTE
-function renderizarHistorialPermanente(filtro = '') {
-  const tbody = document.getElementById('tbodyHistorialPermanente');
-  if (!tbody) return;
-
-  tbody.innerHTML = '';
-
-  if (historialPermanenteClientes.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:#94a3b8;">No hay registros históricos almacenados</td></tr>';
-    return;
-  }
-
-  // Mantenemos el índice real en localStorage al filtrar
-  const filtrados = historialPermanenteClientes
-    .map((item, indexReal) => ({ ...item, indexReal }))
-    .filter(v =>
-      v.clienteNombre.toLowerCase().includes(filtro.toLowerCase()) ||
-      v.clienteId.toLowerCase().includes(filtro.toLowerCase()) ||
-      v.juegoNombre.toLowerCase().includes(filtro.toLowerCase())
-    );
-
-  if (filtrados.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:#94a3b8;">No se encontraron coincidencias</td></tr>';
-    return;
-  }
-
-  filtrados.forEach(v => {
-    const tr = document.createElement('tr');
-    
-    // Botón de copiado para el ID de cliente
-    const idHtml = (v.clienteId && v.clienteId !== 'N/A') 
-      ? `<div style="display: flex; align-items: center; gap: 0.5rem;">
-           <code style="background: #f1f5f9; padding: 2px 6px; border-radius: 4px; font-weight: bold;">${v.clienteId}</code>
-           <button type="button" class="btn btn-primary" style="padding: 2px 6px; font-size: 0.75rem;" onclick="copiarTexto('${v.clienteId}', this)">📋 Copiar</button>
-         </div>`
-      : `<span style="color: #94a3b8;">N/A</span>`;
-
-    // Botón de borrado exclusivo para Desarrollador
-    const colAccion = (estado.rolActual === 'desarrollador')
-      ? `<button class="btn btn-danger" style="padding: 2px 6px; font-size: 0.75rem;" onclick="eliminarRegistroPermanente(${v.indexReal})">🗑️ Borrar</button>`
-      : `<span style="color: #cbd5e1; font-size: 0.75rem;">Protegido</span>`;
-
-    tr.innerHTML = `
-      <td>${v.fecha}</td>
-      <td><b>${v.clienteNombre}</b></td>
-      <td>${idHtml}</td>
-      <td>${v.juegoNombre}</td>
-      <td>$${v.precioVenta.toFixed(2)}</td>
-      <td><span class="badge">${v.metodo.toUpperCase()}</span></td>
-      <td>${colAccion}</td>
-    `;
-    tbody.appendChild(tr);
-  });
-}
 function sincronizarSelectConBuscador() {
   const juegoId = parseInt(document.getElementById('selectJuego').value);
   const juego = estado.juegos.find(j => j.id === juegoId);
@@ -647,7 +683,6 @@ function sincronizarSelectConBuscador() {
   }
 }
 
-// Alternar visibilidad del panel de Control de Fondos
 function toggleControlFondos() {
   const contenido = document.getElementById('contenidoControlFondos');
   if (contenido) {
