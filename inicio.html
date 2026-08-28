@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sistema de Gestión de Ventas y Juegos</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- CABECERA DE LA PÁGINA CON BOTONES DE ENLACE -->
+  <div class="top-bar">
+    <div style="display: flex; align-items: center; gap: 1rem;">
+      <h1>Mi Sistema</h1>
+      <!-- Contenedor donde aparecerán los botones de compras -->
+      <div id="headerLinksContainer" class="header-links-container"></div>
+    </div>
+
+    <div class="role-selector">
+      <select id="roleSelect" onchange="cambiarRol()">
+        <option value="operador">Modo Cajero</option>
+        <option value="desarrollador">Modo Desarrollador</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="container">
+
+    <!-- RESUMEN FINANCIERO: BANCO Y CAJA CHICA (DESPLEGABLE) -->
+    <section class="card finance-card">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <h2 style="border: none; margin: 0; padding: 0;">💵 Control de Fondos</h2>
+        <button type="button" class="btn btn-primary" style="padding: 0.35rem 0.75rem; font-size: 0.85rem;" onclick="toggleControlFondos()">
+          👁️ Mostrar / Ocultar Fondos
+        </button>
+      </div>
+
+      <!-- Contenedor colapsable: Inicia oculto gracias a la clase 'hidden' -->
+      <div id="contenidoControlFondos" class="hidden" style="margin-top: 1rem; border-top: 2px solid #f1f5f9; padding-top: 1rem;">
+        <div class="metrics">
+          <div class="metric-box" style="border-left-color: #2563eb;">
+            <span>Saldo Banco (USD)</span>
+            <strong id="saldoBanco">$0.00</strong>
+          </div>
+          <div class="metric-box" style="border-left-color: #059669;">
+            <span>Saldo Caja Chica (USD)</span>
+            <strong id="saldoCaja">$0.00</strong>
+          </div>
+          <div class="metric-box" style="border-left-color: #d97706;">
+            <span>Ventas del Mes</span>
+            <strong id="totalVentas">$0.00</strong>
+          </div>
+          <div class="metric-box" style="border-left-color: #16a34a;">
+            <span>Ganancia Neta</span>
+            <strong id="totalGanancia">$0.00</strong>
+          </div>
+        </div>
+
+        <!-- ACCIONES DE FONDOS (DEPÓSITO Y GASTO EXTRA) -->
+        <div class="bank-actions">
+          <div>
+            <h3>➕ Depósito Directo</h3>
+            <input type="text" id="depositoConcepto" placeholder="Concepto (Ej. Capital extra)">
+            <input type="number" id="depositoMonto" placeholder="Monto (USD)" step="0.01">
+            <select id="depositoCuenta">
+              <option value="banco">🏦 Depositar a Banco</option>
+              <option value="caja">💵 Depositar a Caja Chica</option>
+            </select>
+            <button class="btn btn-success" onclick="registrarDeposito()">Inyectar Fondos</button>
+          </div>
+
+          <div>
+            <h3>➖ Gasto Extra (Moneda Local ➔ USD)</h3>
+            <input type="text" id="gastoConcepto" placeholder="Concepto (Ej. Pago Luz)">
+            <input type="number" id="gastoLocal" placeholder="Monto Local" step="0.01">
+            <select id="gastoOrigen">
+              <option value="banco">🏦 Descontar de Banco</option>
+              <option value="caja">💵 Descontar de Caja Chica</option>
+            </select>
+            <button class="btn btn-warning" onclick="registrarGasto()">Registrar Gasto</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- REGISTRO RÁPIDO DE VENTAS (CON BUSCADOR Y LISTA SINCRONIZADA) -->
+    <section class="card">
+      <h2>🛒 Registro de Ventas</h2>
+      <div class="form-row">
+        
+        <!-- CONTENEDOR BUSCADOR INTERACTIVO Y SELECTOR -->
+        <div class="search-selector-container">
+          <!-- 1. Buscador -->
+          <div class="search-box-wrapper">
+            <input type="text" id="juegoSearchInput" class="search-input" placeholder="Buscar apartado o juego..." onkeyup="filtrarJuegosEnBuscador()" onfocus="mostrarDropdownBuscador()">
+            <div id="searchResultsDropdown" class="results-dropdown"></div>
+          </div>
+
+          <!-- 2. Select -->
+          <select id="selectJuego" class="form-control" onchange="sincronizarSelectConBuscador()">
+            <option value="">-- Seleccionar Juego / Apartado --</option>
+          </select>
+        </div>
+
+        <input type="text" id="clienteNombre" placeholder="Nombre del Cliente">
+        <input type="text" id="clienteId" placeholder="ID del Cliente (Opcional)">
+        <select id="ventaMetodoPago">
+          <option value="banco">🏦 Cobro/Inversión vía Banco</option>
+          <option value="caja">💵 Cobro/Inversión vía Caja Chica</option>
+        </select>
+        <button class="btn btn-success" onclick="registrarVenta()">+ Registrar Venta</button>
+      </div>
+    </section>
+
+    <!-- PANEL EXCLUSIVO DESARROLLADOR -->
+    <section id="panelDev" class="card dev-panel hidden">
+      
+      <!-- GESTIÓN DE ENLACES DE COMPRA -->
+      <h2>⚙️ Configuración de Enlaces de Compra</h2>
+      <div class="form-row">
+        <input type="text" id="linkNombreInput" placeholder="Nombre (ej. Proveedor X)">
+        <input type="url" id="linkUrlInput" placeholder="URL (https://...)">
+        <button type="button" class="btn btn-primary" onclick="agregarEnlaceCompra()">+ Añadir Enlace</button>
+      </div>
+      <div id="listaEnlacesDev" class="links-dev-list" style="margin-bottom: 2rem;"></div>
+
+      <hr style="margin: 1.5rem 0; border: 0; border-top: 1px solid #e2e8f0;">
+
+      <!-- GESTIÓN DE JUEGOS Y APARTADOS -->
+      <h2>⚙️ Gestión de Juegos y Apartados</h2>
+      <div class="form-row">
+        <input type="text" id="devNombreJuego" placeholder="Nombre del Juego / Apartado">
+        <input type="number" id="devCosto" placeholder="Costo de Adquisición (USD)" step="0.01">
+        <input type="number" id="devPrecio" placeholder="Precio de Venta (USD)" step="0.01">
+        <button class="btn btn-primary" onclick="guardarJuego()">Guardar / Actualizar Juego</button>
+      </div>
+
+      <h3 style="margin-top: 1rem; font-size: 1rem;">Apartados y Juegos Registrados:</h3>
+      <table style="margin-bottom: 1rem;">
+        <thead>
+          <tr>
+            <th>Nombre / Apartado</th>
+            <th>Costo (USD)</th>
+            <th>Precio (USD)</th>
+            <th>Acción</th>
+          </tr>
+        </thead>
+        <tbody id="tbodyJuegosDev">
+          <!-- Se cargan dinámicamente -->
+        </tbody>
+      </table>
+
+      <div class="config-row" style="margin-bottom: 1.5rem;">
+        <label><b>Tipo de Cambio (Moneda Local por 1 USD):</b></label>
+        <input type="number" id="tipoCambio" value="36.5" step="0.01" onchange="actualizarTipoCambio()">
+      </div>
+
+      <hr style="margin: 1.5rem 0; border: 0; border-top: 1px solid #e2e8f0;">
+
+      <!-- CONTROL Y AUDITORÍA DE FONDOS -->
+      <h2>📊 Control y Auditoría de Fondos</h2>
+
+      <h3 style="margin-top: 1rem; font-size: 1rem;">Historial de Depósitos Directos:</h3>
+      <table style="margin-bottom: 1.5rem;">
+        <thead>
+          <tr>
+            <th>Concepto</th>
+            <th>Monto (USD)</th>
+            <th>Cuenta Destino</th>
+            <th>Acción</th>
+          </tr>
+        </thead>
+        <tbody id="tbodyDepositosDev">
+          <!-- Se carga dinámicamente -->
+        </tbody>
+      </table>
+
+      <!-- ZONA DE REINICIO OPERATIVO -->
+      <div style="background-color: #fef2f2; border: 1px solid #fecaca; padding: 1rem; border-radius: 6px;">
+        <h3 style="color: #991b1b; margin-bottom: 0.5rem; font-size: 0.95rem;">⚠️ Zona de Reinicio Operativo</h3>
+        <p style="font-size: 0.85rem; color: #7f1d1d; margin-bottom: 0.75rem;">
+          Esta acción borrará el historial de ventas registradas y reiniciará el contador del mes a $0.00 USD. Los saldos actuales de Banco y Caja Chica permanecerán intactos.
+        </p>
+        <button type="button" class="btn btn-danger" onclick="reiniciarContadorVentas()">🚨 Reiniciar Contador de Ventas</button>
+      </div>
+
+    </section>
+
+    <!-- TABLA HISTORIAL DE VENTAS -->
+    <section class="card">
+      <h2>📋 Historial de Transacciones</h2>
+      <table id="tablaVentas">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Cliente (ID)</th>
+            <th>Juego / Apartado</th>
+            <th>Precio Venta</th>
+            <th>Costo Aplicado</th>
+            <th>Ganancia</th>
+            <th>Método</th>
+            <th>Fecha</th>
+            <th>Acción</th>
+          </tr>
+        </thead>
+        <tbody id="tbodyVentas">
+          <!-- Filas generadas dinámicamente -->
+        </tbody>
+      </table>
+    </section>
+
+  <!-- HISTORIAL PERMANENTE DE CLIENTES (SOLO MODIFICABLE EN MODO DEV) -->
+<section class="card" style="border-top: 4px solid #6366f1; margin-top: 2rem;">
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.5rem;">
+    <h2 style="border: none; margin: 0; padding: 0;">👤 Historial Permanente de Clientes</h2>
+    <input type="text" id="buscarClienteHistorial" placeholder="🔍 Buscar por Cliente, ID o Juego..." onkeyup="filtrarHistorialPermanente()" style="padding: 0.4rem 0.75rem; max-width: 300px; width: 100%;">
+  </div>
+  
+  <p style="font-size: 0.85rem; color: #64748b; margin-bottom: 1rem;">
+    📌 Este registro almacena de forma definitiva las compras. Es independiente de la caja y banco. Las eliminaciones por corrección solo están permitidas en <b>Modo Desarrollador</b>.
+  </p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Fecha</th>
+        <th>Cliente</th>
+        <th>ID Cliente</th>
+        <th>Juego / Apartado</th>
+        <th>Monto Total</th>
+        <th>Método</th>
+        <th>Acción</th> <!-- Columna añadida -->
+      </tr>
+    </thead>
+    <tbody id="tbodyHistorialPermanente">
+      <!-- Filas generadas dinámicamente desde script.js -->
+    </tbody>
+  </table>
+</section>
+
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
