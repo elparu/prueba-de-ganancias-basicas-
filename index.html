@@ -35,7 +35,7 @@
         </button>
       </div>
 
-      <!-- Contenedor colapsable: Inicia oculto gracias a la clase 'hidden' -->
+      <!-- Contenedor colapsable -->
       <div id="contenidoControlFondos" class="hidden" style="margin-top: 1rem; border-top: 2px solid #f1f5f9; padding-top: 1rem;">
         <div class="metrics">
           <div class="metric-box" style="border-left-color: #2563eb;">
@@ -83,20 +83,18 @@
       </div>
     </section>
 
-    <!-- REGISTRO RÁPIDO DE VENTAS (CON BUSCADOR Y LISTA SINCRONIZADA) -->
+    <!-- REGISTRO RÁPIDO DE VENTAS -->
     <section class="card">
       <h2>🛒 Registro de Ventas</h2>
       <div class="form-row">
         
         <!-- CONTENEDOR BUSCADOR INTERACTIVO Y SELECTOR -->
         <div class="search-selector-container">
-          <!-- 1. Buscador -->
           <div class="search-box-wrapper">
             <input type="text" id="juegoSearchInput" class="search-input" placeholder="Buscar apartado o juego..." onkeyup="filtrarJuegosEnBuscador()" onfocus="mostrarDropdownBuscador()">
             <div id="searchResultsDropdown" class="results-dropdown"></div>
           </div>
 
-          <!-- 2. Select -->
           <select id="selectJuego" class="form-control" onchange="sincronizarSelectConBuscador()">
             <option value="">-- Seleccionar Juego / Apartado --</option>
           </select>
@@ -136,19 +134,21 @@
       </div>
 
       <h3 style="margin-top: 1rem; font-size: 1rem;">Apartados y Juegos Registrados:</h3>
-      <table style="margin-bottom: 1rem;">
-        <thead>
-          <tr>
-            <th>Nombre / Apartado</th>
-            <th>Costo (USD)</th>
-            <th>Precio (USD)</th>
-            <th>Acción</th>
-          </tr>
-        </thead>
-        <tbody id="tbodyJuegosDev">
-          <!-- Se cargan dinámicamente -->
-        </tbody>
-      </table>
+      <div class="table-responsive">
+        <table style="margin-bottom: 1rem;">
+          <thead>
+            <tr>
+              <th>Nombre / Apartado</th>
+              <th>Costo (USD)</th>
+              <th>Precio (USD)</th>
+              <th>Acción</th>
+            </tr>
+          </thead>
+          <tbody id="tbodyJuegosDev">
+            <!-- Se cargan dinámicamente -->
+          </tbody>
+        </table>
+      </div>
 
       <div class="config-row" style="margin-bottom: 1.5rem;">
         <label><b>Tipo de Cambio (Moneda Local por 1 USD):</b></label>
@@ -161,19 +161,21 @@
       <h2>📊 Control y Auditoría de Fondos</h2>
 
       <h3 style="margin-top: 1rem; font-size: 1rem;">Historial de Depósitos Directos:</h3>
-      <table style="margin-bottom: 1.5rem;">
-        <thead>
-          <tr>
-            <th>Concepto</th>
-            <th>Monto (USD)</th>
-            <th>Cuenta Destino</th>
-            <th>Acción</th>
-          </tr>
-        </thead>
-        <tbody id="tbodyDepositosDev">
-          <!-- Se carga dinámicamente -->
-        </tbody>
-      </table>
+      <div class="table-responsive">
+        <table style="margin-bottom: 1.5rem;">
+          <thead>
+            <tr>
+              <th>Concepto</th>
+              <th>Monto (USD)</th>
+              <th>Cuenta Destino</th>
+              <th>Acción</th>
+            </tr>
+          </thead>
+          <tbody id="tbodyDepositosDev">
+            <!-- Se carga dinámicamente -->
+          </tbody>
+        </table>
+      </div>
 
       <!-- ZONA DE REINICIO OPERATIVO -->
       <div style="background-color: #fef2f2; border: 1px solid #fecaca; padding: 1rem; border-radius: 6px;">
@@ -189,54 +191,58 @@
     <!-- TABLA HISTORIAL DE VENTAS -->
     <section class="card">
       <h2>📋 Historial de Transacciones</h2>
-      <table id="tablaVentas">
-        <thead>
-          <tr>
-            <th>ID</th>
-            <th>Cliente (ID)</th>
-            <th>Juego / Apartado</th>
-            <th>Precio Venta</th>
-            <th>Costo Aplicado</th>
-            <th>Ganancia</th>
-            <th>Método</th>
-            <th>Fecha</th>
-            <th>Acción</th>
-          </tr>
-        </thead>
-        <tbody id="tbodyVentas">
-          <!-- Filas generadas dinámicamente -->
-        </tbody>
-      </table>
+      <div class="table-responsive">
+        <table id="tablaVentas">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Cliente (ID)</th>
+              <th>Juego / Apartado</th>
+              <th>Precio Venta</th>
+              <th>Costo Aplicado</th>
+              <th>Ganancia</th>
+              <th>Método</th>
+              <th>Fecha</th>
+              <th>Acción</th>
+            </tr>
+          </thead>
+          <tbody id="tbodyVentas">
+            <!-- Filas generadas dinámicamente -->
+          </tbody>
+        </table>
+      </div>
     </section>
 
-  <!-- HISTORIAL PERMANENTE DE CLIENTES (SOLO MODIFICABLE EN MODO DEV) -->
-<section class="card" style="border-top: 4px solid #6366f1; margin-top: 2rem;">
-  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.5rem;">
-    <h2 style="border: none; margin: 0; padding: 0;">👤 Historial Permanente de Clientes</h2>
-    <input type="text" id="buscarClienteHistorial" placeholder="🔍 Buscar por Cliente, ID o Juego..." onkeyup="filtrarHistorialPermanente()" style="padding: 0.4rem 0.75rem; max-width: 300px; width: 100%;">
-  </div>
-  
-  <p style="font-size: 0.85rem; color: #64748b; margin-bottom: 1rem;">
-    📌 Este registro almacena de forma definitiva las compras. Es independiente de la caja y banco. Las eliminaciones por corrección solo están permitidas en <b>Modo Desarrollador</b>.
-  </p>
+    <!-- HISTORIAL PERMANENTE DE CLIENTES -->
+    <section class="card" style="border-top: 4px solid #6366f1; margin-top: 2rem;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.5rem;">
+        <h2 style="border: none; margin: 0; padding: 0;">👤 Historial Permanente de Clientes</h2>
+        <input type="text" id="buscarClienteHistorial" placeholder="🔍 Buscar por Cliente, ID o Juego..." onkeyup="filtrarHistorialPermanente()" style="padding: 0.4rem 0.75rem; max-width: 300px; width: 100%;">
+      </div>
+      
+      <p style="font-size: 0.85rem; color: #64748b; margin-bottom: 1rem;">
+        📌 Este registro almacena de forma definitiva las compras. Es independiente de la caja y banco. Las eliminaciones por corrección solo están permitidas en <b>Modo Desarrollador</b>.
+      </p>
 
-  <table>
-    <thead>
-      <tr>
-        <th>Fecha</th>
-        <th>Cliente</th>
-        <th>ID Cliente</th>
-        <th>Juego / Apartado</th>
-        <th>Monto Total</th>
-        <th>Método</th>
-        <th>Acción</th> <!-- Columna añadida -->
-      </tr>
-    </thead>
-    <tbody id="tbodyHistorialPermanente">
-      <!-- Filas generadas dinámicamente desde script.js -->
-    </tbody>
-  </table>
-</section>
+      <div class="table-responsive">
+        <table>
+          <thead>
+            <tr>
+              <th>Fecha</th>
+              <th>Cliente</th>
+              <th>ID Cliente</th>
+              <th>Juego / Apartado</th>
+              <th>Monto Total</th>
+              <th>Método</th>
+              <th>Acción</th>
+            </tr>
+          </thead>
+          <tbody id="tbodyHistorialPermanente">
+            <!-- Filas generadas dinámicamente desde script.js -->
+          </tbody>
+        </table>
+      </div>
+    </section>
 
   </div>
 
