@@ -137,7 +137,7 @@ function cambiarRol() {
 }
 
 // ==========================================
-// GESTIÓN DE JUEGOS
+// GESTIÓN DE JUEGOS (NUEVA VERSIÓN CORREGIDA)
 // ==========================================
 async function guardarJuego() {
   const nombre = document.getElementById('devNombreJuego').value.trim();
@@ -152,28 +152,56 @@ async function guardarJuego() {
   const juegoExistente = estado.juegos.find(j => j.nombre.toLowerCase() === nombre.toLowerCase());
   
   if (juegoExistente) {
-    await _supabase.from('juegos_registrados').update({ costo, precio }).eq('id', juegoExistente.id);
-    alert(`Juego "${nombre}" actualizado.`);
+    const { error } = await _supabase
+      .from('juegos_registrados')
+      .update({ costo: costo, precio: precio })
+      .eq('id', juegoExistente.id);
+
+    if (error) {
+      console.error('Error al actualizar juego:', error);
+      alert('Error al actualizar el juego: ' + error.message);
+      return;
+    }
+    alert(`Juego "${nombre}" actualizado con éxito.`);
   } else {
-    await _supabase.from('juegos_registrados').insert([{ nombre, costo, precio }]);
-    alert(`Juego "${nombre}" creado.`);
+    const { error } = await _supabase
+      .from('juegos_registrados')
+      .insert([{ nombre: nombre, costo: costo, precio: precio }]);
+
+    if (error) {
+      console.error('Error al insertar juego:', error);
+      alert('Error al guardar el juego: ' + error.message);
+      return;
+    }
+    alert(`Juego "${nombre}" creado con éxito.`);
   }
 
   document.getElementById('devNombreJuego').value = '';
   document.getElementById('devCosto').value = '';
   document.getElementById('devPrecio').value = '';
-  cargarDatosDesdeSupabase();
+
+  await cargarDatosDesdeSupabase();
 }
 
 async function eliminarJuego(idJuego) {
   if (confirm("¿Estás seguro de eliminar este apartado?")) {
-    await _supabase.from('juegos_registrados').delete().eq('id', idJuego);
-    cargarDatosDesdeSupabase();
+    const { error } = await _supabase
+      .from('juegos_registrados')
+      .delete()
+      .eq('id', idJuego);
+
+    if (error) {
+      console.error('Error al eliminar juego:', error);
+      alert('Error al eliminar el juego: ' + error.message);
+      return;
+    }
+
+    await cargarDatosDesdeSupabase();
   }
 }
 
 function cargarJuegoEnFormulario(idJuego) {
-  const juego = estado.juegos.find(j => j.id === idJuego);
+  const juego = estado.juegos.find(j => String(j.id) === String(idJuego));
   if (juego) {
     document.getElementById('devNombreJuego').value = juego.nombre;
     document.getElementById('devCosto').value = juego.costo;
@@ -204,8 +232,8 @@ function renderizarTablaJuegosDev() {
       <td>$${juego.costo.toFixed(2)}</td>
       <td>$${juego.precio.toFixed(2)}</td>
       <td>
-        <button class="btn btn-warning" style="padding:2px 6px; font-size:0.8rem;" onclick="cargarJuegoEnFormulario(${juego.id})">Editar</button>
-        <button class="btn btn-danger" style="padding:2px 6px; font-size:0.8rem;" onclick="eliminarJuego(${juego.id})">Borrar</button>
+        <button class="btn btn-warning" style="padding:2px 6px; font-size:0.8rem;" onclick="cargarJuegoEnFormulario('${juego.id}')">Editar</button>
+        <button class="btn btn-danger" style="padding:2px 6px; font-size:0.8rem;" onclick="eliminarJuego('${juego.id}')">Borrar</button>
       </td>
     `;
     tbody.appendChild(tr);
@@ -278,12 +306,12 @@ function renderizarEnlaces() {
 // REGISTRO DE VENTAS Y FONDOS
 // ==========================================
 async function registrarVenta() {
-  const juegoId = parseInt(document.getElementById('selectJuego').value);
+  const juegoId = document.getElementById('selectJuego').value;
   const clienteNombre = document.getElementById('clienteNombre').value.trim() || 'Cliente General';
   const clienteId = document.getElementById('clienteId').value.trim() || 'N/A';
   const cuentaIngreso = document.getElementById('ventaMetodoPago').value;
 
-  const juego = estado.juegos.find(j => j.id === juegoId);
+  const juego = estado.juegos.find(j => String(j.id) === String(juegoId));
   if (!juego) {
     alert('Seleccione un juego válido.');
     return;
@@ -292,7 +320,6 @@ async function registrarVenta() {
   const gananciaNeta = juego.precio - juego.costo;
   const fechaActual = new Date().toLocaleString();
 
-  // 1. Guardar en Historial Transacciones
   await _supabase.from('historial_transacciones').insert([{
     cliente_nombre: clienteNombre,
     cliente_id: clienteId,
@@ -304,7 +331,6 @@ async function registrarVenta() {
     fecha: fechaActual
   }]);
 
-  // 2. Guardar en Historial Cliente Permanente
   await _supabase.from('historial_clientes').insert([{
     fecha: fechaActual,
     cliente_nombre: clienteNombre,
@@ -314,7 +340,6 @@ async function registrarVenta() {
     metodo: cuentaIngreso
   }]);
 
-  // 3. Actualizar Fondos en Base de Datos
   let nuevoBanco = estado.saldoBanco - juego.costo;
   let nuevaCaja = estado.saldoCaja;
 
@@ -338,7 +363,7 @@ async function registrarVenta() {
 }
 
 async function eliminarVenta(idVenta) {
-  const venta = estado.ventas.find(v => v.id === idVenta);
+  const venta = estado.ventas.find(v => String(v.id) === String(idVenta));
   if (!venta) return;
 
   let nuevoBanco = estado.saldoBanco + venta.costoHistorico;
@@ -396,7 +421,7 @@ async function registrarDeposito() {
 }
 
 async function eliminarDeposito(idDeposito) {
-  const dep = estado.depositos.find(d => d.id === idDeposito);
+  const dep = estado.depositos.find(d => String(d.id) === String(idDeposito));
   if (!dep) return;
 
   if (confirm(`¿Deseas anular el depósito "${dep.concepto}" por $${dep.monto.toFixed(2)} USD?`)) {
@@ -433,7 +458,7 @@ function renderizarTablaDepositosDev() {
       <td>$${dep.monto.toFixed(2)}</td>
       <td><span class="badge">${dep.cuenta.toUpperCase()}</span></td>
       <td>
-        <button class="btn btn-danger" style="padding:2px 6px; font-size:0.8rem;" onclick="eliminarDeposito(${dep.id})">Anular</button>
+        <button class="btn btn-danger" style="padding:2px 6px; font-size:0.8rem;" onclick="eliminarDeposito('${dep.id}')">Anular</button>
       </td>
     `;
     tbody.appendChild(tr);
@@ -592,7 +617,7 @@ function actualizarUI() {
       <td><span class="badge">${v.cuentaAfectada.toUpperCase()}</span></td>
       <td>${v.fecha}</td>
       <td>
-        <button class="btn btn-danger" style="padding:2px 6px; font-size:0.8rem;" onclick="eliminarVenta(${v.id})">Anular</button>
+        <button class="btn btn-danger" style="padding:2px 6px; font-size:0.8rem;" onclick="eliminarVenta('${v.id}')">Anular</button>
       </td>
     `;
     tbody.appendChild(tr);
@@ -674,8 +699,8 @@ function seleccionarJuegoDesdeBuscador(juego) {
 }
 
 function sincronizarSelectConBuscador() {
-  const juegoId = parseInt(document.getElementById('selectJuego').value);
-  const juego = estado.juegos.find(j => j.id === juegoId);
+  const juegoId = document.getElementById('selectJuego').value;
+  const juego = estado.juegos.find(j => String(j.id) === String(juegoId));
   if (juego) {
     document.getElementById('juegoSearchInput').value = juego.nombre;
   } else {
